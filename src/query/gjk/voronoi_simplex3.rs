@@ -51,6 +51,11 @@ impl VoronoiSimplex {
     }
 
     /// Add a point to this simplex.
+    ///
+    /// The point is rejected when it would make the simplex degenerate: a repeat of the
+    /// vertex, a point on the segment's line, or a point in the triangle's plane. None of the
+    /// tests depends on the unit of length, so they mean the same for shapes a millimetre
+    /// across as for shapes a kilometre across.
     pub fn add_point(&mut self, pt: CsoPoint) -> bool {
         self.prev_dim = self.dim;
         self.prev_proj = self.proj;
@@ -58,7 +63,14 @@ impl VoronoiSimplex {
 
         match self.dim {
             0 => {
-                if (self.vertices[0] - pt).length_squared() < gjk::eps_tol() {
+                // A repeat: within the rounding error of the points' own coordinates.
+                let scale = self.vertices[0]
+                    .point
+                    .length_squared()
+                    .max(pt.point.length_squared());
+                if (self.vertices[0] - pt).length_squared()
+                    <= gjk::eps_tol() * gjk::eps_tol() * scale
+                {
                     return false;
                 }
             }
@@ -66,7 +78,10 @@ impl VoronoiSimplex {
                 let ab = self.vertices[1] - self.vertices[0];
                 let ac = pt - self.vertices[0];
 
-                if ab.cross(ac).length_squared() < gjk::eps_tol() {
+                // The squared sine of the angle between the edges.
+                if ab.cross(ac).length_squared()
+                    <= gjk::eps_tol() * ab.length_squared() * ac.length_squared()
+                {
                     return false;
                 }
             }
@@ -76,7 +91,8 @@ impl VoronoiSimplex {
                 let ap = pt - self.vertices[0];
                 let n = ab.cross(ac).normalize();
 
-                if n.dot(ap).abs() < gjk::eps_tol() {
+                // The sine of the angle between the new edge and the triangle's plane.
+                if n.dot(ap).abs() <= gjk::eps_tol() * ap.length() {
                     return false;
                 }
             }
